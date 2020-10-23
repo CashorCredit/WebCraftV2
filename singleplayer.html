@@ -1,0 +1,355 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>WebCraft</title>
+		
+		<!-- Character encoding -->
+		<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+		
+		<!-- Stylesheet -->
+		<link href="style/main.css" rel="stylesheet" type="text/css">
+		
+		<!-- Modules -->
+		<script src="js/glMatrix-1.2.min.js" type="text/javascript"></script>
+		<script src="js/blocks.js" type="text/javascript"></script>
+		<script src="js/helpers.js" type="text/javascript"></script>
+		<script src="js/world.js" type="text/javascript"></script>
+		<script src="js/render.js" type="text/javascript"></script>
+		<script src="js/physics.js" type="text/javascript"></script>
+		<script src="js/player.js" type="text/javascript"></script>
+	</head>
+	
+	<body oncontextmenu="return false">
+		<!-- Render surface -->
+		<canvas id="renderSurface"></canvas>
+		
+		<!-- Material selection -->
+		<table id="materialSelector">
+			<tr></tr>
+		</table>
+        
+    <!--<div id="creatorinfo">
+      WebCraft by <a href="https://github.com/Overv/WebCraft" target="_blank">Overv</a><br>
+    </div>-->
+    
+    <div id="menubutton" onclick="toggleMenu()" class="menubutton content"><div class="elevated">&#9776;</div></div>
+    <div id="menu" style="display: none;" class="menu content">
+      <ul>
+        <li onclick="respawn()">Respawn</li>
+        <li onclick="spawnTree()">Spawn tree</li>
+      </ul>
+    </div>
+    
+    <div id="worldmenu" style="display: none; top: calc(50% - 100px); left: calc(50% - 100px);" class="menu content"></div>
+		
+    <!-- You know I had to do it to 'em -->
+    <script src="https://code.jquery.com/jquery-2.2.1.min.js"
+            integrity="sha256-gvQgAFzTH6trSrAWoH1iPo9Xc96QxSZ3feW6kem+O00="
+            crossorigin="anonymous"></script>
+    
+		<!-- Initialisation code -->
+		<script type="text/javascript">
+      function getUrlVars() {
+        var vars = {};
+        var parts = window.location.href.replace(/[?&]+([^=&]+)=([^&]*)/gi, function(m,key,value) {
+          vars[key] = value;
+        });
+        return vars;
+      }
+      
+      var params = getUrlVars();
+      
+      if (params.canSaveWorldAsFile === undefined || params.canSaveWorldAsFile === true) {
+        $('#menu ul').append($.parseHTML(`
+        <li><input type="file" style="display: none;" id="loadWorldFile" onchange="loadWorld(this)"><label for="loadWorldFile" style="cursor: pointer;">Load world from file</label></li>
+        <li onclick="saveWorld()">Save world to file</li>
+        <li onclick="exportWorld()">Export as RD++ world (WIP)</li>
+        `));
+      }
+      
+      function toggleMenu() {
+        var menu = document.querySelector('#menu');
+        menu.style.display = menu.style.display == 'none' ? 'block' : 'none';
+      }
+      
+      function download(filename, text) {
+        var element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+        element.setAttribute('download', filename);
+
+        element.style.display = 'none';
+        document.body.appendChild(element);
+
+        element.click();
+
+        document.body.removeChild(element);
+      }
+      
+			// Create a new flat world
+			var world = new World( 64, 64, 32 );
+			world.createFlatWorld( 16 );
+			
+			// Set up renderer
+			var render = new Renderer( 'renderSurface' );
+			render.setWorld( world, 8 );
+			render.setPerspective( 60, 0.01, 200 );
+			
+			// Create physics simulator
+			var physics = new Physics();
+			physics.setWorld( world );
+			
+			// Create new local player
+			var player = new Player();
+			player.setWorld( world );
+			player.setInputCanvas( 'renderSurface' );
+			player.setMaterialSelector( 'materialSelector' );
+      
+      function saveWorld() {
+        document.querySelector('#menu').style.display = 'none';
+        download("World.dat", world.getAsString());
+      }
+      
+      function loadWorld(input) {
+        document.querySelector('#menu').style.display = 'none';
+        var file = input.files[0];
+        if (!file) {
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          if (world.setFromString(e.target.result)) {
+            render.setWorld(world, 8);
+			      physics.setWorld(world);
+			      player.setWorld(world);
+            console.log('Loaded world!');
+          } else {
+            console.log('Something bad happened!');
+          }
+        };
+        reader.readAsText(file);
+      }
+      
+      if (typeof(Storage) !== "undefined") {
+        let el = document.querySelector('#menu ul');
+        function append(el, str, click) {
+          let el2 = document.createElement('li');
+          el2.innerHTML = str;
+          el2.addEventListener('click', click, true);
+          el.appendChild(el2);
+        }
+        append(el, 'Load world', function() {
+          document.querySelector('#menu').style.display = 'none';
+          let el2 = document.querySelector('#worldmenu');
+          el2.innerHTML = '<div class="menutitle">Load world&nbsp;&nbsp;&nbsp;&nbsp;<span class="xbutton" onclick="document.querySelector(\'#worldmenu\').style.display = \'none\';">X</span></div><ul></ul>';
+          let el3 = document.querySelector('#worldmenu ul');
+          for (let i = 1; i <= 5; i ++) {
+            if (localStorage.getItem('World' + i) == undefined) continue;
+            append(el3, 'World ' + i, function() {
+              el2.style.display = 'none';
+              if (world.setFromString(localStorage.getItem('World' + i))) {
+                render.setWorld(world, 8);
+                physics.setWorld(world);
+                player.setWorld(world);
+                console.log('Loaded world!');
+              } else {
+                console.log('Something bad happened!');
+              }
+            });
+          }
+          el2.style.display = 'block';
+        });
+        append(el, 'Save world', function() {
+          document.querySelector('#menu').style.display = 'none';
+          let el2 = document.querySelector('#worldmenu');
+          el2.innerHTML = '<div class="menutitle">Save world&nbsp;&nbsp;&nbsp;&nbsp;<span class="xbutton" onclick="document.querySelector(\'#worldmenu\').style.display = \'none\';">X</span></div><ul></ul>';
+          let el3 = document.querySelector('#worldmenu ul');
+          for (let i = 1; i <= 5; i ++) {
+            append(el3, 'World ' + i, function() {
+              el2.style.display = 'none';
+              localStorage.setItem('World' + i, world.getAsString());
+            });
+          }
+          el2.style.display = 'block';
+        });
+        append(el, 'Delete world', function() {
+          document.querySelector('#menu').style.display = 'none';
+          let el2 = document.querySelector('#worldmenu');
+          el2.innerHTML = '<div class="menutitle">Delete world&nbsp;&nbsp;&nbsp;&nbsp;<span class="xbutton" onclick="document.querySelector(\'#worldmenu\').style.display = \'none\';">X</span></div><ul></ul>';
+          let el3 = document.querySelector('#worldmenu ul');
+          for (let i = 1; i <= 5; i ++) {
+            if (localStorage.getItem('World' + i) == undefined) continue;
+            append(el3, 'World ' + i, function() {
+              el2.style.display = 'none';
+              localStorage.removeItem('World' + i);
+            });
+          }
+          el2.style.display = 'block';
+        });
+      }
+      
+      function respawn() {
+        player.setWorld(world);
+      }
+      
+      function spawnTree() {
+        var n = Math.floor(player.pos.x);
+        var n2 = Math.floor(player.pos.z);
+        var n3 = Math.floor(player.pos.y);
+        var n4;
+        var n5;
+        var n6;
+        var n7;
+        //world.setBlock(n, n3, n2, BLOCK.AIR);
+        var n8 = Math.floor(Math.random() * 3) + 4;
+        var bl = true;
+        for (n7 = n2; n7 <= n2 + 1 + n8; ++n7) {
+            n4 = 1;
+            if (n7 == n2) {
+                n4 = 0;
+            }
+            if (n7 >= n2 + 1 + n8 - 2) {
+                n4 = 2;
+            }
+            for (n6 = n - n4; n6 <= n + n4 && bl; ++n6) {
+                for (n5 = n3 - n4; n5 <= n3 + n4 && bl; ++n5) {
+                    if (!world.isBlockOutOfBounds(n6, n5, n7)) continue;
+                    bl = false;
+                }
+            }
+        }
+        if (!bl) {
+            return false;
+        }
+        if (world.getBlock(n, n3, n2 - 1) == BLOCK.DIRT) {
+            world.setBlock(n, n3, n2 - 1, BLOCK.DIRT);
+            for (n4 = n2 - 3 + n8; n4 <= n2 + n8; ++n4) {
+                n6 = n4 - (n2 + n8);
+                n5 = 1 - n6 / 2;
+                for (var i = n - n5 + 1; i <= n + n5; ++i) {
+                    var n9 = i - n;
+                    for (n7 = n3 - n5 + 1; n7 <= n3 + n5; ++n7) {
+                        var n10 = n7 - n3;
+                        if (Math.abs(n9) == n5 && Math.abs(n10) == n5 && (Math.floor(Math.random() * 2 - 1) == 0 || n6 == 0) || world.getBlock(i, n7, n4) != BLOCK.AIR) continue;
+                        world.setBlock(i, n7, n4, BLOCK.LEAVES);
+                    }
+                }
+            }
+            for (n4 = 0; n4 < n8; ++n4) {
+                if (world.getBlock(n, n3, n2 + n4) != BLOCK.AIR) continue;
+                world.setBlock(n, n3, n2 + n4, BLOCK.WOOD);
+            }
+            return true;
+        }
+        return false;
+      }
+      
+      function _arrayBufferToBase64(buffer) {
+        var binary = '';
+        var bytes = new Uint8Array(buffer);
+        var len = bytes.byteLength;
+        for (var i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+      }
+      
+      function exportWorld() {
+        let worldBytes = [];
+        // Push magic number (int)
+        let MAGIC_NUMBER = 656127880;
+        worldBytes.push((MAGIC_NUMBER >> 24) & 0xFF);
+        worldBytes.push((MAGIC_NUMBER >> 16) & 0xFF);
+        worldBytes.push((MAGIC_NUMBER >> 8) & 0xFF);
+        worldBytes.push(MAGIC_NUMBER & 0xFF);
+        // Push format version (byte)
+        worldBytes.push(1);
+        // Push world name and stuff (not needed, idk why it was added) (utf)
+        worldBytes.push(84);
+        worldBytes.push(69);
+        worldBytes.push(83);
+        worldBytes.push(84);
+        worldBytes.push(0);
+        worldBytes.push(84);
+        worldBytes.push(69);
+        worldBytes.push(83);
+        worldBytes.push(84);
+        worldBytes.push(0);
+        // Push time modified. (long)
+        worldBytes.push(0);
+        worldBytes.push(0);
+        worldBytes.push(0);
+        worldBytes.push(0);
+        worldBytes.push(0);
+        worldBytes.push(0);
+        worldBytes.push(0);
+        worldBytes.push(0);
+        // Push world size (3x short)
+        worldBytes.push((world.sx >> 8) & 0xFF);
+        worldBytes.push(world.sx & 0xFF);
+        worldBytes.push((world.sy >> 8) & 0xFF);
+        worldBytes.push(world.sy & 0xFF);
+        worldBytes.push((world.sz >> 8) & 0xFF);
+        worldBytes.push(world.sz & 0xFF);
+        // Push spawn position (3x short)
+        worldBytes.push((Math.floor(world.spawnPoint.x) >> 8) & 0xFF);
+        worldBytes.push(Math.floor(world.spawnPoint.x) & 0xFF);
+        worldBytes.push((Math.floor(world.spawnPoint.z) >> 8) & 0xFF);
+        worldBytes.push(Math.floor(world.spawnPoint.z) & 0xFF);
+        worldBytes.push((Math.floor(world.spawnPoint.y) >> 8) & 0xFF);
+        worldBytes.push(Math.floor(world.spawnPoint.y) & 0xFF);
+        console.log(Math.floor(world.spawnPoint.x), Math.floor(world.spawnPoint.z), Math.floor(world.spawnPoint.y));
+        let indexOffset = worldBytes.length;
+        for (let x = 0; x < world.sx; x ++)
+          for (let y = 0; y < world.sy; y ++)
+            for (let z = 0; z < world.sz; z ++)
+              worldBytes[indexOffset + (z * world.sz + y) * world.sy + x] = (world.blocks[x][y][z] || BLOCK.AIR).mcId;
+        
+        let base64Rep = _arrayBufferToBase64(worldBytes);
+        $.ajax({
+          type: 'POST',
+          url: '/compress',
+          data: {'data': base64Rep},
+          dataType: 'json',
+          success: function(response) {
+            var element = document.createElement('a');
+            element.setAttribute('href', 'data:application/octet-stream;base64,' + encodeURIComponent(response.responseText));
+            element.setAttribute('download', 'World.mclevel');
+
+            element.style.display = 'none';
+            document.body.appendChild(element);
+
+            element.click();
+
+            document.body.removeChild(element);
+          },
+          error: function(promblem) {
+            if (promblem.status == 200) return this.success(promblem);
+            console.log('oof', promblem);
+          }
+        });
+      }
+			
+			// Render loop
+      function mainLoop() {
+				var time = new Date().getTime() / 1000.0;
+				
+				// Simulate physics
+				physics.simulate();
+				
+				// Update local player
+				player.update();
+				
+				// Build a chunk
+				render.buildChunks( 1 );
+				
+				// Draw world
+				render.setCamera( player.getEyePos().toArray(), player.angles );
+				render.draw();
+                
+        requestAnimationFrame( mainLoop );
+      }
+            
+      mainLoop();
+		</script>
+	</body>
+</html>
